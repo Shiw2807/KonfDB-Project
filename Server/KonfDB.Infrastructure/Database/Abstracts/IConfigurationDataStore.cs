@@ -113,6 +113,11 @@ namespace KonfDB.Infrastructure.Database.Abstracts
 
         /* Internal */
         Dictionary<string, string> GetSettings(bool active, bool autoLoad);
+
+        /* Tenant Settings */
+        TenantSettingsModel GetTenantSettings(long tenantId);
+        TenantSettingsModel UpdateTenantSettings(TenantSettingsModel settings);
+        bool DeleteTenantSettings(long tenantId);
     }
 }
 

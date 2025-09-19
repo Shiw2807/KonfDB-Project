@@ -1478,5 +1478,132 @@ namespace KonfDB.Engine.Database.Stores
         }
 
         #endregion
+
+        #region Tenant Settings
+
+        public TenantSettingsModel GetTenantSettings(long tenantId)
+        {
+            using (var unitOfWork = new UnitOfWork(_connectionString))
+            {
+                // Get the suite (tenant) information
+                var suite = unitOfWork.Context.Suites.FirstOrDefault(x => x.SuiteId == tenantId);
+                if (suite == null)
+                {
+                    return null;
+                }
+
+                // Get all parameters for this suite
+                var parameters = unitOfWork.Context.Parameters.Where(x => x.SuiteId == tenantId).ToList();
+                
+                // Get all mappings for this suite
+                var mappings = unitOfWork.Context.Mappings.Where(x => x.SuiteId == tenantId).ToList();
+
+                // Build the settings dictionary
+                var settings = new Dictionary<string, object>();
+                foreach (var param in parameters)
+                {
+                    settings[param.ParameterName] = param.ParameterValue;
+                }
+
+                // Build default values (you can customize this based on your business logic)
+                var defaultValues = new Dictionary<string, object>
+                {
+                    { "maxConnections", 100 },
+                    { "timeout", 30 },
+                    { "retryCount", 3 },
+                    { "enableLogging", true },
+                    { "cacheEnabled", true },
+                    { "cacheDuration", 300 }
+                };
+
+                var tenantSettings = new TenantSettingsModel
+                {
+                    TenantId = suite.SuiteId,
+                    TenantName = suite.SuiteName,
+                    IsActive = suite.IsActive,
+                    Settings = settings,
+                    DefaultValues = defaultValues,
+                    Metadata = new TenantMetadata
+                    {
+                        CreatedDate = DateTime.UtcNow,
+                        ModifiedDate = DateTime.UtcNow,
+                        LastAccessedDate = DateTime.UtcNow,
+                        SettingsCount = settings.Count,
+                        Version = "1.0"
+                    }
+                };
+
+                return tenantSettings;
+            }
+        }
+
+        public TenantSettingsModel UpdateTenantSettings(TenantSettingsModel settings)
+        {
+            if (settings == null)
+                throw new ArgumentNullException("settings");
+
+            using (var unitOfWork = new UnitOfWork(_connectionString))
+            {
+                // Verify the suite exists
+                var suite = unitOfWork.Context.Suites.FirstOrDefault(x => x.SuiteId == settings.TenantId);
+                if (suite == null)
+                {
+                    throw new InvalidOperationException($"Tenant with ID {settings.TenantId} not found");
+                }
+
+                // Update suite properties if needed
+                suite.IsActive = settings.IsActive;
+                unitOfWork.Update(suite);
+
+                // Update or create parameters for each setting
+                foreach (var setting in settings.Settings)
+                {
+                    var existingParam = unitOfWork.Context.Parameters
+                        .FirstOrDefault(x => x.SuiteId == settings.TenantId && x.ParameterName == setting.Key);
+
+                    if (existingParam != null)
+                    {
+                        existingParam.ParameterValue = setting.Value?.ToString();
+                        unitOfWork.Update(existingParam);
+                    }
+                    else
+                    {
+                        var newParam = new Parameter
+                        {
+                            SuiteId = settings.TenantId,
+                            ParameterName = setting.Key,
+                            ParameterValue = setting.Value?.ToString(),
+                            IsActive = true,
+                            IsEncrypted = false
+                        };
+                        unitOfWork.Add(newParam);
+                    }
+                }
+
+                // Update metadata
+                settings.Metadata.ModifiedDate = DateTime.UtcNow;
+                settings.Metadata.SettingsCount = settings.Settings.Count;
+
+                return settings;
+            }
+        }
+
+        public bool DeleteTenantSettings(long tenantId)
+        {
+            using (var unitOfWork = new UnitOfWork(_connectionString))
+            {
+                // Get all parameters for this tenant
+                var parameters = unitOfWork.Context.Parameters.Where(x => x.SuiteId == tenantId).ToList();
+                
+                foreach (var param in parameters)
+                {
+                    unitOfWork.Delete(param);
+                }
+
+                return true;
+            }
+        }
+
+        #endregion
     }
 }
